@@ -1,0 +1,15 @@
+{
+  "lineage_id": "kernel-lineage-042",
+  "episode_id": "ep-test-01",
+  "timestamp": "2026-09-14T21:10:56Z",
+  "subsystem_fitness": {
+    "sched": 0.895,
+    "mem": 0.7225,
+    "vfs": 0.91,
+    "hal": 0.938,
+    "rt": 0.9
+  },
+  "behaviour_fitness": 0.8731,
+  "coherence": 0.88,
+  "status": "completed"
+}
