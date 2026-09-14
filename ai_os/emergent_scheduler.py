@@ -18,9 +18,16 @@ class EmergentScheduler:
 
     def apply_traits(self) -> None:
         """Apply current traits to the core scheduler (hooked externally)."""
-        # This is a mutation/recombination surface, not a full implementation.
-        # KernelCore or Scheduler will read these traits and adapt behaviour.
         pass
+
+    def compute_fitness(self, metrics: Dict[str, Any]) -> float:
+        """Compute scheduler fitness based on metrics."""
+        tsu = metrics.get("tsu", 0.8)
+        pds = metrics.get("pds", 0.8)
+        si = metrics.get("si", 0)
+        si_norm = min(1.0, si / 10.0)
+        cfs = (0.5 * tsu) + (0.3 * pds) + (0.2 * (1.0 - si_norm))
+        return round(cfs, 4)
 
     def fitness_hooks(self) -> Dict[str, Any]:
         """Expose metrics relevant to scheduler fitness."""

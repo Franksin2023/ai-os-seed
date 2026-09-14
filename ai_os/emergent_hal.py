@@ -20,6 +20,12 @@ class EmergentHAL:
         """Apply current traits to the HAL/driver stack (hooked externally)."""
         pass
 
+    def compute_fitness(self, metrics: Dict[str, Any]) -> float:
+        """Compute HAL subsystem fitness based on metrics."""
+        init_success = metrics.get("init_success_rate", 0.95)
+        stability = metrics.get("timeout_stability", 0.90)
+        return round((0.6 * init_success) + (0.4 * stability), 4)
+
     def fitness_hooks(self) -> Dict[str, Any]:
         """Expose metrics relevant to HAL fitness."""
         return {

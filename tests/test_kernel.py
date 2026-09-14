@@ -188,6 +188,13 @@ def test_emergent_subsystems():
     assert hal.fitness_hooks()["driver_profile"] == "minimal"
     assert runtime.fitness_hooks()["interaction_mode"] == "rpc"
 
+    # Test compute_fitness hooks
+    assert sched.compute_fitness({"tsu": 0.9, "pds": 0.8, "si": 0}) > 0.5
+    assert mem.compute_fitness({"efficiency": 0.9, "fragmentation": 0.1}) > 0.5
+    assert vfs.compute_fitness({"lookup_speed_score": 0.9, "reliability_score": 0.9}) == 0.9
+    assert hal.compute_fitness({"init_success_rate": 1.0, "timeout_stability": 0.9}) > 0.8
+    assert runtime.compute_fitness({"responsiveness": 0.9, "process_handling": 0.9}) == 0.9
+
 
 def test_emergent_evolution_cycle():
     res = run_emergent_evolution_cycle("moderate")

@@ -20,6 +20,12 @@ class EmergentVFS:
         """Apply current traits to the VFS subsystem (hooked externally)."""
         pass
 
+    def compute_fitness(self, metrics: Dict[str, Any]) -> float:
+        """Compute VFS subsystem fitness based on metrics."""
+        lookup_speed = metrics.get("lookup_speed_score", 0.85)
+        reliability = metrics.get("reliability_score", 0.90)
+        return round((0.5 * lookup_speed) + (0.5 * reliability), 4)
+
     def fitness_hooks(self) -> Dict[str, Any]:
         """Expose metrics relevant to VFS fitness."""
         return {
