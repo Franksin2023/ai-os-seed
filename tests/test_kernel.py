@@ -1,5 +1,5 @@
 """
-Unit and integration test suite for AI-OS kernel.
+Unit and integration test suite for AI-OS kernel and emergent subsystems.
 """
 
 import pytest
@@ -14,6 +14,11 @@ from ai_os.kernel.types import (
 )
 from ai_os.kernel.agent_api import AgentAPI
 from evolution_internal import run_internal_evolution_cycle
+from ai_os.emergent_scheduler import EmergentScheduler, SchedulerTraits
+from ai_os.emergent_memory import EmergentMemoryModel, MemoryTraits
+from ai_os.emergent_vfs import EmergentVFS, VFSTraits
+from ai_os.emergent_hal import EmergentHAL, HALTraits
+from ai_os.emergent_runtime import EmergentRuntime, RuntimeTraits
 
 
 @pytest.fixture
@@ -161,3 +166,23 @@ def test_internal_evolution_cycle():
     assert res["cycle_type"] == "moderate"
     assert res["pressure_log"]["mutations_executed"] == 5
     assert "champion" in res
+
+
+def test_emergent_subsystems():
+    sched = EmergentScheduler(SchedulerTraits(time_slice_ms=10, fairness_mode="cfs", priority_weights={"high": 1.5}))
+    mem = EmergentMemoryModel(MemoryTraits(allocation_strategy="buddy", fragmentation_threshold=0.2, paging_mode="demand"))
+    vfs = EmergentVFS(VFSTraits(persistence_mode="in_memory", indexing_strategy="btree", cache_policy="lru"))
+    hal = EmergentHAL(HALTraits(init_sequence="fast", timeout_ms=500, driver_profile="minimal"))
+    runtime = EmergentRuntime(RuntimeTraits(interaction_mode="rpc", process_model="microkernel", logging_verbosity="info"))
+
+    sched.apply_traits()
+    mem.apply_traits()
+    vfs.apply_traits()
+    hal.apply_traits()
+    runtime.apply_traits()
+
+    assert sched.fitness_hooks()["time_slice_ms"] == 10
+    assert mem.fitness_hooks()["allocation_strategy"] == "buddy"
+    assert vfs.fitness_hooks()["persistence_mode"] == "in_memory"
+    assert hal.fitness_hooks()["driver_profile"] == "minimal"
+    assert runtime.fitness_hooks()["interaction_mode"] == "rpc"
