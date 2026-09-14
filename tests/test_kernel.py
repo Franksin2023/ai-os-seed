@@ -16,6 +16,7 @@ from ai_os.kernel.agent_api import AgentAPI
 from evolution_internal import run_internal_evolution_cycle
 from evolution_emergent import run_emergent_evolution_cycle
 from behaviour_orchestrator import run_episode
+from task_executor import execute_task
 from ai_os.emergent_scheduler import EmergentScheduler, SchedulerTraits
 from ai_os.emergent_memory import EmergentMemoryModel, MemoryTraits
 from ai_os.emergent_vfs import EmergentVFS, VFSTraits
@@ -211,3 +212,14 @@ def test_behaviour_orchestrator_episode():
     assert res["lineage_id"] == "kernel-lineage-042"
     assert "behaviour_fitness" in res
     assert res["behaviour_fitness"] > 0.5
+
+
+def test_task_executor():
+    task_cfg = {
+        "name": "process_lifecycle",
+        "steps": ["create", "allocate_memory", "vfs_write", "terminate"],
+    }
+    res = execute_task(task_cfg, "kernel-lineage-063")
+    assert res["lineage_id"] == "kernel-lineage-063"
+    assert res["task"] == "process_lifecycle"
+    assert res["task_fitness"] > 0.5
