@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-09-14T20:10:35Z",
+  "cycle_type": "moderate",
+  "tournament_scores": [
+    {
+      "lineage_id": "lineage-base-001",
+      "ts": 0.8525
+    },
+    {
+      "lineage_id": "lineage-jules-002",
+      "ts": 0.877
+    }
+  ],
+  "champion": {
+    "lineage_id": "lineage-jules-002",
+    "p": 0.88,
+    "f": 0.84,
+    "o": 0.9,
+    "s": 0.92,
+    "m": 0.8,
+    "fit": 0.877
+  }
+}

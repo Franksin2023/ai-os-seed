@@ -13,6 +13,7 @@ from ai_os.kernel.types import (
     SyscallRequest,
 )
 from ai_os.kernel.agent_api import AgentAPI
+from evolution_internal import run_internal_evolution_cycle
 
 
 @pytest.fixture
@@ -152,3 +153,11 @@ def test_agent_api(kernel):
         args={"path": "/admin/secret", "content": b"classified"},
     )
     assert sys_res["success"] is True
+
+
+def test_internal_evolution_cycle():
+    res = run_internal_evolution_cycle("moderate")
+    assert res["status"] == "success"
+    assert res["cycle_type"] == "moderate"
+    assert res["pressure_log"]["mutations_executed"] == 5
+    assert "champion" in res
