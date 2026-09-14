@@ -14,6 +14,7 @@ from ai_os.kernel.types import (
 )
 from ai_os.kernel.agent_api import AgentAPI
 from evolution_internal import run_internal_evolution_cycle
+from evolution_emergent import run_emergent_evolution_cycle
 from ai_os.emergent_scheduler import EmergentScheduler, SchedulerTraits
 from ai_os.emergent_memory import EmergentMemoryModel, MemoryTraits
 from ai_os.emergent_vfs import EmergentVFS, VFSTraits
@@ -186,3 +187,11 @@ def test_emergent_subsystems():
     assert vfs.fitness_hooks()["persistence_mode"] == "in_memory"
     assert hal.fitness_hooks()["driver_profile"] == "minimal"
     assert runtime.fitness_hooks()["interaction_mode"] == "rpc"
+
+
+def test_emergent_evolution_cycle():
+    res = run_emergent_evolution_cycle("moderate")
+    assert res["status"] == "success"
+    assert res["cycle_type"] == "moderate"
+    assert "initial_traits" in res
+    assert "subsystem_log" in res

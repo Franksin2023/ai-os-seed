@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-09-14T20:27:39Z",
+  "scheduler": {
+    "time_slice_ms": 10,
+    "fairness_mode": "round_robin",
+    "priority_weights": {
+      "default": 1.0
+    }
+  },
+  "memory": {
+    "allocation_strategy": "first_fit",
+    "fragmentation_threshold": 0.3,
+    "paging_mode": "naive"
+  },
+  "vfs": {
+    "persistence_mode": "in_memory",
+    "indexing_strategy": "flat",
+    "cache_policy": "fifo"
+  },
+  "hal": {
+    "init_sequence": "standard",
+    "timeout_ms": 1000,
+    "driver_profile": "generic"
+  },
+  "runtime": {
+    "interaction_mode": "cli",
+    "process_model": "single",
+    "logging_verbosity": "normal"
+  }
+}
