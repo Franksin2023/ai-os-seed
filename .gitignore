@@ -9,5 +9,6 @@ build/
 swarm/out/
 swarm/results/
 swarm/prompts/
+swarm/output/
 .tmp_patch.diff
 node_modules/

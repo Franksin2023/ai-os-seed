@@ -1,0 +1,9 @@
+{
+  "name": "propose_change",
+  "method": "POST",
+  "url": "http://localhost:3000/propose-change",
+  "body": {
+    "description": "{{description}}",
+    "diff": "{{diff}}"
+  }
+}

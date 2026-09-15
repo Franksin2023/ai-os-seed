@@ -1,5 +1,6 @@
-claude
-gemini
-copilot
-devin
-cursor
+Claude
+Gemini
+Copilot
+DeepSeek
+Devin
+Cursor

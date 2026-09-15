@@ -1,0 +1,8 @@
+{
+  "swarm": {
+    "inject_profiles": true,
+    "inject_structure": true,
+    "inject_repo_state": true,
+    "inject_last_commit": true
+  }
+}
