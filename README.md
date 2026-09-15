@@ -49,6 +49,19 @@ AI-OS-SEED implements a capability-based microkernel design architecture in Pyth
 
 ---
 
+## 🧪 Test Harness
+
+All tests live in `/tests`.
+The single entry point for running all tests across unit and integration suites is `run_tests.sh`.
+
+- Execute all unit and integration tests:
+  ```bash
+  bash run_tests.sh
+  ```
+- The `door-server` uses `TEST_COMMAND="bash run_tests.sh"` to automatically validate proposed patches.
+
+---
+
 ## 🚦 Quickstart
 
 ### Running the Boot Harness
