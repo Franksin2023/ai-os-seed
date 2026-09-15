@@ -76,6 +76,17 @@ All AI-generated mutations proposed through the `door-server` are evaluated by t
 
 ---
 
+## 🐝 Swarm Loop Controller
+
+The Swarm Loop Controller located in `/swarm` manages multi-agent sequential evolution loops.
+
+- **Entry Point**: `swarm/swarm_loop.sh` runs all AI agents listed in `swarm/agents.txt` in sequence.
+- **Task Generation**: `swarm/request_task.sh` generates repo state prompts and collects TASK_SCHEMA.md-compliant JSON task proposals into `swarm/out/<agent>.json`.
+- **Door Integration**: Each agent proposal is submitted to `door-server` (`POST /propose-change`), with responses logged to `swarm/results/<agent>.json`.
+- **Execution Summary**: After processing all agents, `swarm_loop.sh` prints a tabular summary detailing status, created branches, or error messages.
+
+---
+
 ## 🚦 Quickstart
 
 ### Running the Boot Harness

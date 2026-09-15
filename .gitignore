@@ -4,3 +4,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Swarm outputs, prompts, and results
+swarm/out/
+swarm/results/
+swarm/prompts/
+.tmp_patch.diff
+node_modules/
