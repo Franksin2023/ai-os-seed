@@ -86,6 +86,26 @@ app.post('/propose-change', (req, res) => {
       throw new Error(`Tests failed using command "${testCmd}"`);
     }
 
+    // Run fitness evaluation engine
+    console.log('[FITNESS] Running fitness evaluation engine...');
+    try {
+      execFileSync('bash', ['fitness/fitness_engine.sh', REPO_PATH, branchName], { cwd: REPO_PATH, stdio: 'inherit' });
+      console.log('[FITNESS] Fitness evaluation passed successfully.');
+    } catch (fitnessErr) {
+      try {
+        runGit(['reset', '--hard', 'HEAD']);
+        runGit(['clean', '-fd']);
+        runGit(['checkout', originalBranch]);
+        runGit(['branch', '-D', branchName]);
+      } catch (rollbackErr) {
+        console.error(`[ROLLBACK ERROR] ${rollbackErr.message}`);
+      }
+      return res.status(400).json({
+        status: 'failed',
+        error: 'fitness score below threshold'
+      });
+    }
+
     // Commit and push
     console.log('[GIT] Committing changes...');
     runGit(['add', '-A']);

@@ -62,6 +62,20 @@ The single entry point for running all tests across unit and integration suites 
 
 ---
 
+## 🏋️ Fitness Engine
+
+All AI-generated mutations proposed through the `door-server` are evaluated by the Fitness Engine located in `/fitness`.
+
+- **Single Entry Point**: `fitness/fitness_engine.sh`
+- **Minimum Score Threshold**: `70` out of `100`
+- **Evaluation Domains**:
+  - `performance`: Benchmark checks in `/fitness/benchmarks`
+  - `stability`: Stability checks in `/fitness/stability`
+  - `architecture`: Directory integrity checks in `/fitness/architecture` (rejects changes to forbidden directories `/bootloader` and `/security`)
+- All AI mutations must pass fitness evaluation before being committed and pushed.
+
+---
+
 ## 🚦 Quickstart
 
 ### Running the Boot Harness
