@@ -229,6 +229,38 @@ def test_ipc_queue_overflow_protection(kernel):
     assert len(overflow_events) >= 2
 
 
+def test_ipc_endpoint_discovery(kernel):
+    cap_reg = Capability(CapabilityType.IPC_SEND, "service_endpoint")
+    cap_exec = Capability(CapabilityType.SYSCALL_EXEC, "*")
+    cap_access = Capability(CapabilityType.IPC_SEND, "service_endpoint")
+
+    p_owner = kernel.create_process(name="owner", capabilities=[cap_reg])
+    p_disc = kernel.create_process(name="discoverer", capabilities=[cap_exec, cap_access])
+    p_unauth = kernel.create_process(name="unauth", capabilities=[])
+
+    # Register endpoint
+    ok_reg = kernel.ipc.register_endpoint("service_endpoint", p_owner.pid, CapabilityType.IPC_SEND, "Service Endpoint")
+    assert ok_reg is True
+
+    # Discover endpoints from p_disc (has SYSCALL_EXEC and IPC_SEND shm_region)
+    discovered = kernel.ipc.discover_endpoints(p_disc.pid)
+    assert len(discovered) == 1
+    assert discovered[0].endpoint_id == "service_endpoint"
+
+    # Discover endpoints from p_unauth (lacks SYSCALL_EXEC -> empty result)
+    unauth_discovered = kernel.ipc.discover_endpoints(p_unauth.pid)
+    assert len(unauth_discovered) == 0
+
+    # Lookup endpoint directly
+    ep = kernel.ipc.lookup_endpoint("service_endpoint", p_disc.pid)
+    assert ep is not None
+    assert ep.owner_pid == p_owner.pid
+
+    # Telemetry verification
+    denied_events = kernel.telemetry.get_events(event_type="IPC_ENDPOINT_DENIED")
+    assert len(denied_events) >= 1
+
+
 def test_syscall_dispatcher(kernel):
     caps = [Capability(CapabilityType.VFS_WRITE, "/logs/*")]
     p = kernel.create_process(name="logger", capabilities=caps)

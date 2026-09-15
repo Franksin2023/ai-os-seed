@@ -1,6 +1,6 @@
 """
 Capability-guarded Inter-Process Communication (IPC) for AI-OS.
-Supports message queues, shared memory regions, pub-sub topic routing, and overflow protection.
+Supports message queues, shared memory regions, pub-sub topic routing, endpoint discovery, and overflow protection.
 """
 
 import fnmatch
@@ -20,6 +20,14 @@ class IPCMessage:
     receiver_pid: int
     channel: str
     payload: Any
+
+
+@dataclass
+class IPCEndpoint:
+    endpoint_id: str
+    owner_pid: int
+    required_capability: CapabilityType = CapabilityType.IPC_SEND
+    description: str = ""
 
 
 class SharedMemoryRegion:
@@ -153,7 +161,7 @@ class PubSubChannel:
 
 class IPCManager:
     """
-    Manages named capability-restricted IPC channels, message queues, shared memory regions, and pub-sub channels with overflow protection.
+    Manages named capability-restricted IPC channels, message queues, shared memory regions, endpoint discovery, and pub-sub channels with overflow protection.
     """
 
     def __init__(
@@ -173,6 +181,88 @@ class IPCManager:
         self.shared_regions: Dict[str, SharedMemoryRegion] = {}
         # Maps channel_id -> PubSubChannel
         self.pubsub_channels: Dict[str, PubSubChannel] = {}
+        # Maps endpoint_id -> IPCEndpoint
+        self.endpoints: Dict[str, IPCEndpoint] = {}
+
+    def register_endpoint(
+        self,
+        endpoint_id: str,
+        owner_pid: int,
+        required_capability: CapabilityType = CapabilityType.IPC_SEND,
+        description: str = "",
+    ) -> bool:
+        """Register an IPC endpoint, gated by owner's IPC_SEND capability."""
+        if not self.security_manager.check_capability(owner_pid, CapabilityType.IPC_SEND, endpoint_id):
+            if self.telemetry:
+                self.telemetry.log_event(
+                    "IPC_ENDPOINT_DENIED",
+                    pid=owner_pid,
+                    details={"endpoint_id": endpoint_id, "action": "register"},
+                )
+            return False
+
+        endpoint = IPCEndpoint(
+            endpoint_id=endpoint_id,
+            owner_pid=owner_pid,
+            required_capability=required_capability,
+            description=description,
+        )
+        self.endpoints[endpoint_id] = endpoint
+        return True
+
+    def discover_endpoints(self, discovering_pid: int) -> List[IPCEndpoint]:
+        """
+        Discover endpoints accessible by discovering_pid.
+        Requires discovering_pid to hold SYSCALL_EXEC and matching required_capability.
+        """
+        if not self.security_manager.check_capability(discovering_pid, CapabilityType.SYSCALL_EXEC, "*"):
+            if self.telemetry:
+                self.telemetry.log_event(
+                    "IPC_ENDPOINT_DENIED",
+                    pid=discovering_pid,
+                    details={"action": "discover_all"},
+                )
+            return []
+
+        accessible = []
+        for ep_id, ep in self.endpoints.items():
+            if self.security_manager.check_capability(discovering_pid, ep.required_capability, ep_id):
+                accessible.append(ep)
+            else:
+                if self.telemetry:
+                    self.telemetry.log_event(
+                        "IPC_ENDPOINT_DENIED",
+                        pid=discovering_pid,
+                        details={"endpoint_id": ep_id, "action": "discover"},
+                    )
+
+        return accessible
+
+    def lookup_endpoint(self, endpoint_id: str, discovering_pid: int) -> Optional[IPCEndpoint]:
+        """Lookup specific endpoint if discovering_pid holds SYSCALL_EXEC and required capability."""
+        if not self.security_manager.check_capability(discovering_pid, CapabilityType.SYSCALL_EXEC, "*"):
+            if self.telemetry:
+                self.telemetry.log_event(
+                    "IPC_ENDPOINT_DENIED",
+                    pid=discovering_pid,
+                    details={"endpoint_id": endpoint_id, "action": "lookup"},
+                )
+            return None
+
+        ep = self.endpoints.get(endpoint_id)
+        if not ep:
+            return None
+
+        if not self.security_manager.check_capability(discovering_pid, ep.required_capability, endpoint_id):
+            if self.telemetry:
+                self.telemetry.log_event(
+                    "IPC_ENDPOINT_DENIED",
+                    pid=discovering_pid,
+                    details={"endpoint_id": endpoint_id, "action": "lookup"},
+                )
+            return None
+
+        return ep
 
     def get_pubsub_channel(self, channel_id: str) -> PubSubChannel:
         """Retrieve or create a PubSubChannel by channel_id."""
