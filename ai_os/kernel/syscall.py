@@ -1,5 +1,6 @@
 """
 Syscall dispatcher and security validator for AI-OS.
+Enforces per-process resource quotas prior to dispatching system calls.
 """
 
 from typing import TYPE_CHECKING, Any, Dict, Optional
@@ -14,9 +15,15 @@ if TYPE_CHECKING:
     from ai_os.kernel.core import KernelCore
 
 
+class QuotaExceededError(Exception):
+    """Raised when a process exceeds its capability resource quota at the syscall boundary."""
+
+    pass
+
+
 class SyscallDispatcher:
     """
-    Validates capabilities and dispatches system calls to microkernel subsystems.
+    Validates capabilities and resource quotas before dispatching system calls to microkernel subsystems.
     """
 
     def __init__(self, kernel: "KernelCore") -> None:
@@ -61,7 +68,17 @@ class SyscallDispatcher:
                 success=False, error=f"Unsupported Syscall Code: {code}"
             )
 
-        res = handler(pid, args)
+        try:
+            self._enforce_resource_quota(pid, code, args)
+            res = handler(pid, args)
+        except QuotaExceededError as err:
+            error_msg = str(err)
+            self.kernel.telemetry.log_event(
+                "RESOURCE_QUOTA_EXCEEDED",
+                pid=pid,
+                details={"code": code.value, "error": error_msg},
+            )
+            return SyscallResponse(success=False, error=error_msg)
 
         self.kernel.telemetry.log_event(
             "SYSCALL_EXECUTE",
@@ -70,6 +87,23 @@ class SyscallDispatcher:
         )
 
         return res
+
+    def _enforce_resource_quota(self, pid: int, code: SyscallCode, args: Dict[str, Any]) -> None:
+        """Check process resource limits at the syscall dispatcher boundary."""
+        if code == SyscallCode.MEMORY_ALLOCATE:
+            size = args.get("size", 0)
+            if not self.kernel.security.check_resource_limit(pid, "memory_bytes", size):
+                raise QuotaExceededError(f"QuotaExceededError: Memory limit exceeded ({size} bytes requested)")
+
+        elif code == SyscallCode.VFS_WRITE:
+            # Check open files quota
+            if not self.kernel.security.check_resource_limit(pid, "open_files", 1):
+                raise QuotaExceededError("QuotaExceededError: Open files limit exceeded")
+
+        elif code == SyscallCode.IPC_SEND:
+            # Check IPC channel quota
+            if not self.kernel.security.check_resource_limit(pid, "ipc_channels", 1):
+                raise QuotaExceededError("QuotaExceededError: IPC channels limit exceeded")
 
     def _handle_process_create(self, pid: int, args: Dict[str, Any]) -> SyscallResponse:
         if not self.kernel.security.check_capability(pid, CapabilityType.PROCESS_SPAWN):
@@ -116,6 +150,8 @@ class SyscallDispatcher:
             return SyscallResponse(success=False, error="No memory space for PID")
 
         ok = space.allocate(addr, size)
+        if ok:
+            self.kernel.security.update_resource_usage(pid, "memory_bytes", size)
         return SyscallResponse(success=ok)
 
     def _handle_memory_read(self, pid: int, args: Dict[str, Any]) -> SyscallResponse:
@@ -161,6 +197,7 @@ class SyscallDispatcher:
         ok = self.kernel.vfs.write_file(pid, path, content)
         if not ok:
             return SyscallResponse(success=False, error="VFS Write Error / Capability Denied")
+        self.kernel.security.update_resource_usage(pid, "open_files", 1)
         return SyscallResponse(success=True)
 
     def _handle_vfs_list(self, pid: int, args: Dict[str, Any]) -> SyscallResponse:
@@ -183,6 +220,7 @@ class SyscallDispatcher:
         )
         if not ok:
             return SyscallResponse(success=False, error="IPC Send Error / Capability Denied")
+        self.kernel.security.update_resource_usage(pid, "ipc_channels", 1)
         return SyscallResponse(success=True)
 
     def _handle_ipc_receive(self, pid: int, args: Dict[str, Any]) -> SyscallResponse:

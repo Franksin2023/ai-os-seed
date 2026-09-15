@@ -242,7 +242,7 @@ def test_ipc_endpoint_discovery(kernel):
     ok_reg = kernel.ipc.register_endpoint("service_endpoint", p_owner.pid, CapabilityType.IPC_SEND, "Service Endpoint")
     assert ok_reg is True
 
-    # Discover endpoints from p_disc (has SYSCALL_EXEC and IPC_SEND shm_region)
+    # Discover endpoints from p_disc
     discovered = kernel.ipc.discover_endpoints(p_disc.pid)
     assert len(discovered) == 1
     assert discovered[0].endpoint_id == "service_endpoint"
@@ -259,6 +259,38 @@ def test_ipc_endpoint_discovery(kernel):
     # Telemetry verification
     denied_events = kernel.telemetry.get_events(event_type="IPC_ENDPOINT_DENIED")
     assert len(denied_events) >= 1
+
+
+def test_syscall_quota_enforcement(kernel):
+    # Register process with exact 1024 bytes memory quota
+    limits = ResourceLimits(max_memory_bytes=1024, max_open_files=1, max_ipc_channels=1)
+    caps = [
+        Capability(CapabilityType.MEMORY_ALLOC, "*"),
+        Capability(CapabilityType.VFS_WRITE, "*"),
+        Capability(CapabilityType.IPC_SEND, "*"),
+    ]
+    p = kernel.create_process(name="quota_proc", capabilities=caps, limits=limits)
+
+    # 1. Quota exactly met (1024 bytes allocated)
+    req1 = SyscallRequest(pid=p.pid, code=SyscallCode.MEMORY_ALLOCATE, args={"address": 0x1000, "size": 1024})
+    resp1 = kernel.syscall(req1)
+    assert resp1.success is True
+
+    # 2. Quota exceeded (attempt additional 1 byte allocation)
+    req2 = SyscallRequest(pid=p.pid, code=SyscallCode.MEMORY_ALLOCATE, args={"address": 0x2000, "size": 1})
+    resp2 = kernel.syscall(req2)
+    assert resp2.success is False
+    assert "QuotaExceededError" in resp2.error
+
+    # Verify telemetry audit event for quota violation
+    quota_events = kernel.telemetry.get_events(event_type="RESOURCE_QUOTA_EXCEEDED", pid=p.pid)
+    assert len(quota_events) == 1
+    assert quota_events[0].details["code"] == "SYS_MEMORY_ALLOCATE"
+
+    # 3. Quota reset after process termination
+    assert kernel.terminate_process(p.pid) is True
+    usage_after = kernel.security.get_resource_usage(p.pid)
+    assert len(usage_after) == 0
 
 
 def test_syscall_dispatcher(kernel):
