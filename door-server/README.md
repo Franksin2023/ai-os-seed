@@ -37,3 +37,19 @@ curl -X POST http://localhost:3000/propose-change \
     "diff": "--- a/ai_os/kernel/memory.py\n+++ b/ai_os/kernel/memory.py\n@@ -10,1 +10,1 @@\n-# comment\n+# updated comment\n"
   }'
 ```
+
+---
+
+## Testing the door
+
+To test proposing a change to `door-test.txt` using the `/propose-change` endpoint:
+
+```bash
+curl -X POST http://localhost:3000/propose-change \
+  -H "Authorization: Bearer yourtoken" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "Update door-test.txt via door server proposal",
+    "diff": "--- a/door-test.txt\n+++ b/door-test.txt\n@@ -1,1 +1,1 @@\n-door test line\n+door test line updated\n"
+  }'
+```
