@@ -123,6 +123,45 @@ def test_ipc(kernel):
     assert msg.payload == {"msg": "ping"}
 
 
+def test_ipc_shared_memory(kernel):
+    c_create = Capability(CapabilityType.IPC_SEND, "shm_region_01")
+    c_attach = Capability(CapabilityType.IPC_RECEIVE, "shm_region_01")
+
+    p1 = kernel.create_process(name="creator", capabilities=[c_create])
+    p2 = kernel.create_process(name="attacher", capabilities=[c_attach])
+    p3 = kernel.create_process(name="unauthorized", capabilities=[])
+
+    # Create region
+    shm = kernel.ipc.create_shared_memory("shm_region_01", 1024, p1.pid)
+    assert shm is not None
+    assert shm.size_bytes == 1024
+
+    # Attach p2
+    ok_attach = kernel.ipc.attach_shared_memory("shm_region_01", p2.pid)
+    assert ok_attach is True
+
+    # Attach p3 (unauthorized - denied)
+    ok_unauth = kernel.ipc.attach_shared_memory("shm_region_01", p3.pid)
+    assert ok_unauth is False
+
+    # Write data from p1
+    assert shm.write(p1.pid, b"SHARED_DATA_BLOCK", offset=0) is True
+
+    # Read data from p2
+    data = shm.read(p2.pid, offset=0, length=17)
+    assert data == b"SHARED_DATA_BLOCK"
+
+    # Detach p2
+    assert kernel.ipc.detach_shared_memory("shm_region_01", p2.pid) is True
+    assert shm.read(p2.pid, offset=0, length=17) is None
+
+    # Telemetry verification
+    map_events = kernel.telemetry.get_events(event_type="IPC_SHARED_MEMORY_MAP")
+    unmap_events = kernel.telemetry.get_events(event_type="IPC_SHARED_MEMORY_UNMAP")
+    assert len(map_events) == 2  # creation (p1) + attachment (p2)
+    assert len(unmap_events) == 1  # detachment (p2)
+
+
 def test_syscall_dispatcher(kernel):
     caps = [Capability(CapabilityType.VFS_WRITE, "/logs/*")]
     p = kernel.create_process(name="logger", capabilities=caps)

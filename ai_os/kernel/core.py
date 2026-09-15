@@ -22,9 +22,9 @@ class KernelCore:
         self.security = SecurityManager()
         self.memory = MemoryManager()
         self.vfs = VFS(self.security)
-        self.ipc = IPCManager(self.security)
-        self.scheduler = Scheduler()
         self.telemetry = TelemetrySubsystem()
+        self.ipc = IPCManager(self.security, self.telemetry)
+        self.scheduler = Scheduler()
         self.syscall_dispatcher = SyscallDispatcher(self)
         self.is_booted = False
 
