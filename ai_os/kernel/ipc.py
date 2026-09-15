@@ -1,9 +1,10 @@
 """
 Capability-guarded Inter-Process Communication (IPC) for AI-OS.
-Supports message queues, shared memory regions, pub-sub topic routing, endpoint discovery, and overflow protection.
+Supports message queues, shared memory regions, pub-sub topic routing, endpoint discovery, priority queues, and overflow protection.
 """
 
 import fnmatch
+import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
@@ -20,6 +21,9 @@ class IPCMessage:
     receiver_pid: int
     channel: str
     payload: Any
+    priority: int = 10  # Lower number = higher priority
+    deadline: Optional[float] = None
+    created_at: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -161,7 +165,7 @@ class PubSubChannel:
 
 class IPCManager:
     """
-    Manages named capability-restricted IPC channels, message queues, shared memory regions, endpoint discovery, and pub-sub channels with overflow protection.
+    Manages named capability-restricted IPC channels, message queues, shared memory regions, endpoint discovery, and priority message ordering.
     """
 
     def __init__(
@@ -173,16 +177,21 @@ class IPCManager:
         self.security_manager = security_manager
         self.telemetry = telemetry
         self.max_queue_size = max_queue_size
-        # Maps channel_name -> deque of IPCMessage
-        self._channels: Dict[str, deque] = {}
-        # Maps PID -> deque of IPCMessage directed to specific process
-        self._inboxes: Dict[int, deque] = {}
+        # Maps channel_name -> List of IPCMessage
+        self._channels: Dict[str, List[IPCMessage]] = {}
+        # Maps PID -> List of IPCMessage directed to specific process
+        self._inboxes: Dict[int, List[IPCMessage]] = {}
         # Maps region_id -> SharedMemoryRegion
         self.shared_regions: Dict[str, SharedMemoryRegion] = {}
         # Maps channel_id -> PubSubChannel
         self.pubsub_channels: Dict[str, PubSubChannel] = {}
         # Maps endpoint_id -> IPCEndpoint
         self.endpoints: Dict[str, IPCEndpoint] = {}
+
+    def _sort_key(self, msg: IPCMessage) -> tuple:
+        """Sort key: lower priority number first, then earlier deadline, then creation time."""
+        dl = msg.deadline if msg.deadline is not None else float("inf")
+        return (msg.priority, dl, msg.created_at)
 
     def register_endpoint(
         self,
@@ -211,10 +220,7 @@ class IPCManager:
         return True
 
     def discover_endpoints(self, discovering_pid: int) -> List[IPCEndpoint]:
-        """
-        Discover endpoints accessible by discovering_pid.
-        Requires discovering_pid to hold SYSCALL_EXEC and matching required_capability.
-        """
+        """Discover endpoints accessible by discovering_pid."""
         if not self.security_manager.check_capability(discovering_pid, CapabilityType.SYSCALL_EXEC, "*"):
             if self.telemetry:
                 self.telemetry.log_event(
@@ -272,8 +278,16 @@ class IPCManager:
             )
         return self.pubsub_channels[channel_id]
 
-    def send_message(self, sender_pid: int, receiver_pid: int, channel: str, payload: Any) -> bool:
-        """Send message over channel to receiver_pid, gated by IPC_SEND capability and overflow policy."""
+    def send_message(
+        self,
+        sender_pid: int,
+        receiver_pid: int,
+        channel: str,
+        payload: Any,
+        priority: int = 10,
+        deadline: Optional[float] = None,
+    ) -> bool:
+        """Send priority IPC message over channel to receiver_pid, gated by capability and overflow policy."""
         if not self.security_manager.check_capability(sender_pid, CapabilityType.IPC_SEND, channel):
             return False
 
@@ -282,14 +296,16 @@ class IPCManager:
             receiver_pid=receiver_pid,
             channel=channel,
             payload=payload,
+            priority=priority,
+            deadline=deadline,
         )
 
         if channel not in self._channels:
-            self._channels[channel] = deque()
+            self._channels[channel] = []
 
         channel_queue = self._channels[channel]
         if len(channel_queue) >= self.max_queue_size:
-            channel_queue.popleft()  # Drop oldest
+            channel_queue.pop(0)  # Drop oldest / lowest priority
             if self.telemetry:
                 self.telemetry.log_event(
                     "IPC_OVERFLOW",
@@ -298,13 +314,14 @@ class IPCManager:
                 )
 
         channel_queue.append(msg)
+        channel_queue.sort(key=self._sort_key)
 
         if receiver_pid not in self._inboxes:
-            self._inboxes[receiver_pid] = deque()
+            self._inboxes[receiver_pid] = []
 
         inbox = self._inboxes[receiver_pid]
         if len(inbox) >= self.max_queue_size:
-            inbox.popleft()  # Drop oldest
+            inbox.pop(0)  # Drop oldest / lowest priority
             if self.telemetry:
                 self.telemetry.log_event(
                     "IPC_OVERFLOW",
@@ -313,10 +330,24 @@ class IPCManager:
                 )
 
         inbox.append(msg)
+        inbox.sort(key=self._sort_key)
+
+        if self.telemetry:
+            self.telemetry.log_event(
+                "IPC_PRIORITY_MESSAGE",
+                pid=sender_pid,
+                details={
+                    "channel": channel,
+                    "receiver_pid": receiver_pid,
+                    "priority": priority,
+                    "deadline": deadline,
+                },
+            )
+
         return True
 
     def receive_message(self, receiver_pid: int, channel: str) -> Optional[IPCMessage]:
-        """Receive oldest message on channel for receiver_pid, gated by IPC_RECEIVE capability."""
+        """Receive highest priority message on channel for receiver_pid."""
         if not self.security_manager.check_capability(receiver_pid, CapabilityType.IPC_RECEIVE, channel):
             return None
 
@@ -326,8 +357,7 @@ class IPCManager:
 
         for idx, msg in enumerate(inbox):
             if msg.channel == channel:
-                del inbox[idx]
-                return msg
+                return inbox.pop(idx)
 
         return None
 
