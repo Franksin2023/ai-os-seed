@@ -17,12 +17,30 @@ AGENT_ENDPOINT="${AGENT_ENDPOINT:-http://localhost:8000/agent}"
 MODIFIED_FILES=$(git status --short 2>/dev/null || echo "None")
 LAST_COMMIT=$(git log -1 --pretty=format:"%h - %s (%cr) <%an>" 2>/dev/null || echo "No commit history")
 
-# 2. Construct prompt file
+# 2. Extract profile section from AGENT_PROFILES.md
+PROFILES_FILE="$SWARM_DIR/AGENT_PROFILES.md"
+PROFILE_TEXT="No profile specified."
+
+if [ -f "$PROFILES_FILE" ]; then
+    # Convert agent name to Title Case matching headers in AGENT_PROFILES.md (e.g. claude -> Claude)
+    AGENT_HEADER="$(echo "$AGENT" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}') "
+    PROFILE_TEXT=$(sed -n "/## ${AGENT_HEADER% }/,/## /p" "$PROFILES_FILE" | grep -v "^## [A-Za-z]" | sed '/^$/d')
+    if [ -z "$PROFILE_TEXT" ]; then
+        PROFILE_TEXT=$(sed -n "/## ${AGENT_HEADER% }/,\$p" "$PROFILES_FILE" | grep -v "^## [A-Za-z]" | sed '/^$/d')
+    fi
+fi
+
+# 3. Construct prompt file
 mkdir -p "$SWARM_DIR/prompts" "$SWARM_DIR/out"
 
 cat <<EOF > "$PROMPT_FILE"
 === AI-OS AGENT TASK REQUEST ===
 Agent Identifier: $AGENT
+
+=== AGENT PROFILE & CONSTRAINTS ===
+$PROFILE_TEXT
+
+=== REPOSITORY STATE ===
 Repo Status:
 $MODIFIED_FILES
 
@@ -30,7 +48,7 @@ Last Commit:
 $LAST_COMMIT
 
 Instructions:
-Analyze the current repository state and return a valid JSON object compliant with TASK_SCHEMA.md:
+Analyze the current repository state, adhere strictly to your agent profile/constraints above, and return a valid JSON object compliant with TASK_SCHEMA.md:
 {
   "description": "Short summary of the change or improvement",
   "intent": "Purpose of the change (e.g. fix, refactor, optimize, add-feature)",

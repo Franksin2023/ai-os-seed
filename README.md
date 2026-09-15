@@ -85,6 +85,11 @@ The Swarm Loop Controller located in `/swarm` manages multi-agent sequential evo
 - **Door Integration**: Each agent proposal is submitted to `door-server` (`POST /propose-change`), with responses logged to `swarm/results/<agent>.json`.
 - **Execution Summary**: After processing all agents, `swarm_loop.sh` prints a tabular summary detailing status, created branches, or error messages.
 
+### Agent Profiles
+
+Behavioral profiles for each AI agent participating in the swarm are defined in `swarm/AGENT_PROFILES.md`.
+`swarm/request_task.sh` uses these profiles (style, strengths, preferred intents, and constraints) to shape prompts in `/swarm/prompts/<agent>.txt`.
+
 ---
 
 ## 🚦 Quickstart
