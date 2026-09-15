@@ -21,8 +21,12 @@ class AgentTaskStatus(Enum):
 @dataclass
 class AgentTask:
     task_id: str
-    task_type: str
-    payload: Dict[str, Any]
+    description: str = ""
+    required_capabilities: List[CapabilityType] = field(default_factory=list)
+    fitness_function: Optional[Callable[[], bool]] = None
+    adr_required: bool = True
+    task_type: str = "generic"
+    payload: Dict[str, Any] = field(default_factory=dict)
     status: AgentTaskStatus = AgentTaskStatus.PENDING
     assigned_agent_id: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
@@ -74,6 +78,15 @@ class AgentOrchestrator:
             details={"agent_id": agent_id, "name": name, "lineage_id": lineage_id},
         )
         return profile
+
+    def submit_task(self, task: AgentTask) -> AgentTask:
+        """Submit a pre-configured AgentTask to the orchestrator task pool."""
+        self.tasks[task.task_id] = task
+        self.kernel.telemetry.log_event(
+            "AGENT_TASK_SUBMITTED",
+            details={"task_id": task.task_id, "description": task.description},
+        )
+        return task
 
     def create_task(self, task_type: str, payload: Dict[str, Any]) -> AgentTask:
         """Create a new task for agent execution."""

@@ -9,6 +9,7 @@ from ai_os.kernel.core import KernelCore
 from ai_os.kernel.types import Capability, CapabilityType, SyscallCode, SyscallRequest
 from ai_os.kernel.agent_api import AgentAPI
 from ai_os.agents.orchestrator import AgentOrchestrator
+from ai_os.agents.task_manifest import get_all_tasks
 
 
 def run_post_diagnostics(kernel: KernelCore) -> bool:
@@ -88,6 +89,13 @@ def main() -> int:
         lineage_id="lineage-jules-002",
     )
     print(f"[POST] Agent Onboarded Successfully (PID {jules_agent.pid}, ID {jules_agent.agent_id})")
+
+    print("[POST] Loading 50 atomic tasks into mutation surface...")
+    tasks = get_all_tasks()
+    for task in tasks:
+        orchestrator.submit_task(task)
+
+    print(f"[BOOT COMPLETE] System ready. {len(tasks)} tasks pending in orchestrator pool.")
 
     # Spawn initial init process
     init_proc = kernel.create_process(

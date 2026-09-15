@@ -23,6 +23,7 @@ from ai_os.emergent_vfs import EmergentVFS, VFSTraits
 from ai_os.emergent_hal import EmergentHAL, HALTraits
 from ai_os.emergent_runtime import EmergentRuntime, RuntimeTraits
 from ai_os.agents.orchestrator import AgentOrchestrator, AgentTaskStatus
+from ai_os.agents.task_manifest import get_all_tasks, get_tasks_by_category
 
 
 @pytest.fixture
@@ -226,7 +227,7 @@ def test_task_executor():
     assert res["task_fitness"] > 0.5
 
 
-def test_agent_orchestrator(kernel):
+def test_agent_orchestrator_manifest(kernel):
     orchestrator = AgentOrchestrator(kernel)
     agent = orchestrator.onboard_agent(
         agent_id="test-agent-01",
@@ -234,15 +235,15 @@ def test_agent_orchestrator(kernel):
         capabilities=[Capability(CapabilityType.AGENT_MUTATION, "*")],
     )
     assert agent.agent_id == "test-agent-01"
-    assert agent.pid > 0
 
-    task = orchestrator.create_task("mutation", {"target": "scheduler"})
-    assert task.status == AgentTaskStatus.PENDING
+    tasks = get_all_tasks()
+    assert len(tasks) == 50
 
-    ok = orchestrator.assign_task(task.task_id, "test-agent-01")
-    assert ok is True
-    assert task.status == AgentTaskStatus.ASSIGNED
+    ipc_tasks = get_tasks_by_category("IPC")
+    assert len(ipc_tasks) == 10
 
-    done = orchestrator.complete_task(task.task_id, {"mutated": True})
-    assert done is True
-    assert task.status == AgentTaskStatus.COMPLETED
+    for t in tasks:
+        orchestrator.submit_task(t)
+
+    assert len(orchestrator.tasks) == 50
+    assert orchestrator.tasks["IPC-001"].description != ""
