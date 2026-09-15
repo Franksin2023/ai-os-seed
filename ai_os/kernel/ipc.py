@@ -189,9 +189,18 @@ class IPCManager:
         self.endpoints: Dict[str, IPCEndpoint] = {}
 
     def _sort_key(self, msg: IPCMessage) -> tuple:
-        """Sort key: lower priority number first, then earlier deadline, then creation time."""
+        """Sort key: lower priority number first, then earlier deadline, then earlier creation time."""
         dl = msg.deadline if msg.deadline is not None else float("inf")
         return (msg.priority, dl, msg.created_at)
+
+    def _drop_oldest_lowest_priority(self, queue: List[IPCMessage]) -> None:
+        """Drop oldest message among the lowest priority messages in queue."""
+        if not queue:
+            return
+        lowest_prio = max(msg.priority for msg in queue)
+        lowest_prio_indices = [i for i, m in enumerate(queue) if m.priority == lowest_prio]
+        oldest_idx = min(lowest_prio_indices, key=lambda i: queue[i].created_at)
+        queue.pop(oldest_idx)
 
     def register_endpoint(
         self,
@@ -304,8 +313,11 @@ class IPCManager:
             self._channels[channel] = []
 
         channel_queue = self._channels[channel]
-        if len(channel_queue) >= self.max_queue_size:
-            channel_queue.pop(0)  # Drop oldest / lowest priority
+        channel_queue.append(msg)
+        channel_queue.sort(key=self._sort_key)
+
+        if len(channel_queue) > self.max_queue_size:
+            self._drop_oldest_lowest_priority(channel_queue)
             if self.telemetry:
                 self.telemetry.log_event(
                     "IPC_OVERFLOW",
@@ -313,24 +325,21 @@ class IPCManager:
                     details={"channel": channel, "policy": "drop_oldest"},
                 )
 
-        channel_queue.append(msg)
-        channel_queue.sort(key=self._sort_key)
-
         if receiver_pid not in self._inboxes:
             self._inboxes[receiver_pid] = []
 
         inbox = self._inboxes[receiver_pid]
-        if len(inbox) >= self.max_queue_size:
-            inbox.pop(0)  # Drop oldest / lowest priority
+        inbox.append(msg)
+        inbox.sort(key=self._sort_key)
+
+        if len(inbox) > self.max_queue_size:
+            self._drop_oldest_lowest_priority(inbox)
             if self.telemetry:
                 self.telemetry.log_event(
                     "IPC_OVERFLOW",
                     pid=receiver_pid,
                     details={"inbox_pid": receiver_pid, "policy": "drop_oldest"},
                 )
-
-        inbox.append(msg)
-        inbox.sort(key=self._sort_key)
 
         if self.telemetry:
             self.telemetry.log_event(
@@ -347,7 +356,7 @@ class IPCManager:
         return True
 
     def receive_message(self, receiver_pid: int, channel: str) -> Optional[IPCMessage]:
-        """Receive highest priority message on channel for receiver_pid."""
+        """Receive highest priority message (index 0) on channel for receiver_pid."""
         if not self.security_manager.check_capability(receiver_pid, CapabilityType.IPC_RECEIVE, channel):
             return None
 
