@@ -162,6 +162,48 @@ def test_ipc_shared_memory(kernel):
     assert len(unmap_events) == 1  # detachment (p2)
 
 
+def test_ipc_pubsub_channel(kernel):
+    cap_pub = Capability(CapabilityType.IPC_SEND, "events_channel")
+    cap_sub = Capability(CapabilityType.IPC_RECEIVE, "events_channel")
+
+    publisher = kernel.create_process(name="publisher", capabilities=[cap_pub])
+    sub1 = kernel.create_process(name="sub1", capabilities=[cap_sub])
+    sub2 = kernel.create_process(name="sub2", capabilities=[cap_sub])
+    unauth_sub = kernel.create_process(name="unauth", capabilities=[])
+
+    pubsub = kernel.ipc.get_pubsub_channel("events_channel")
+
+    # Subscribe p1 & p2 with topic patterns
+    assert pubsub.subscribe(sub1.pid, "kernel.*") is True
+    assert pubsub.subscribe(sub2.pid, "*.alert") is True
+
+    # Unauthorized subscribe fail
+    assert pubsub.subscribe(unauth_sub.pid, "kernel.*") is False
+
+    # Publish topic 'kernel.alert' -> matches sub1 and sub2
+    notified = pubsub.publish(publisher.pid, "kernel.alert", {"level": "CRITICAL"})
+    assert notified == 2
+
+    # Receive at sub1
+    msg1 = pubsub.receive(sub1.pid)
+    assert msg1 == ("kernel.alert", {"level": "CRITICAL"})
+
+    # Receive at sub2
+    msg2 = pubsub.receive(sub2.pid)
+    assert msg2 == ("kernel.alert", {"level": "CRITICAL"})
+
+    # Unsubscribe sub1
+    assert pubsub.unsubscribe(sub1.pid, "kernel.*") is True
+
+    # Publish topic 'kernel.info' -> matches sub1 (unsubscribed = 0 match)
+    notified2 = pubsub.publish(publisher.pid, "kernel.info", {"level": "INFO"})
+    assert notified2 == 0
+
+    # Telemetry verification
+    pub_events = kernel.telemetry.get_events(event_type="IPC_PUBSUB_EVENT")
+    assert len(pub_events) == 2
+
+
 def test_syscall_dispatcher(kernel):
     caps = [Capability(CapabilityType.VFS_WRITE, "/logs/*")]
     p = kernel.create_process(name="logger", capabilities=caps)

@@ -1,8 +1,9 @@
 """
 Capability-guarded Inter-Process Communication (IPC) for AI-OS.
-Supports message queues and shared memory regions.
+Supports message queues, shared memory regions, and pub-sub topic routing.
 """
 
+import fnmatch
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
@@ -63,9 +64,79 @@ class SharedMemoryRegion:
         return True
 
 
+class PubSubChannel:
+    """
+    Publish-subscribe IPC channel with topic pattern matching and capability controls.
+    """
+
+    def __init__(self, channel_id: str, security_manager: SecurityManager, telemetry: Optional["TelemetrySubsystem"] = None) -> None:
+        self.channel_id = channel_id
+        self.security_manager = security_manager
+        self.telemetry = telemetry
+        # Maps PID -> Set[topic_pattern]
+        self.subscriptions: Dict[int, Set[str]] = {}
+        # Maps PID -> deque of (topic, payload) messages
+        self.inboxes: Dict[int, deque] = {}
+
+    def subscribe(self, pid: int, topic_pattern: str) -> bool:
+        """Subscribe process PID to a topic pattern (e.g. 'kernel.*' or 'system/events')."""
+        if not self.security_manager.check_capability(pid, CapabilityType.IPC_RECEIVE, self.channel_id):
+            return False
+
+        if pid not in self.subscriptions:
+            self.subscriptions[pid] = set()
+            self.inboxes[pid] = deque()
+
+        self.subscriptions[pid].add(topic_pattern)
+        return True
+
+    def unsubscribe(self, pid: int, topic_pattern: str) -> bool:
+        """Unsubscribe process PID from a topic pattern."""
+        if pid in self.subscriptions and topic_pattern in self.subscriptions[pid]:
+            self.subscriptions[pid].remove(topic_pattern)
+            return True
+        return False
+
+    def publish(self, publisher_pid: int, topic: str, payload: Any) -> int:
+        """Publish payload on topic to matching subscriber inboxes."""
+        if not self.security_manager.check_capability(publisher_pid, CapabilityType.IPC_SEND, self.channel_id):
+            return 0
+
+        subscribers_notified = 0
+        for pid, patterns in self.subscriptions.items():
+            if not self.security_manager.check_capability(pid, CapabilityType.IPC_RECEIVE, self.channel_id):
+                continue
+
+            for pat in patterns:
+                if fnmatch.fnmatch(topic, pat):
+                    self.inboxes[pid].append((topic, payload))
+                    subscribers_notified += 1
+                    break
+
+        if self.telemetry:
+            self.telemetry.log_event(
+                "IPC_PUBSUB_EVENT",
+                pid=publisher_pid,
+                details={
+                    "channel_id": self.channel_id,
+                    "topic": topic,
+                    "subscribers_notified": subscribers_notified,
+                },
+            )
+
+        return subscribers_notified
+
+    def receive(self, pid: int) -> Optional[tuple]:
+        """Fetch next (topic, payload) tuple for subscriber PID."""
+        inbox = self.inboxes.get(pid)
+        if not inbox or len(inbox) == 0:
+            return None
+        return inbox.popleft()
+
+
 class IPCManager:
     """
-    Manages named capability-restricted IPC channels, message queues, and shared memory regions.
+    Manages named capability-restricted IPC channels, message queues, shared memory regions, and pub-sub channels.
     """
 
     def __init__(self, security_manager: SecurityManager, telemetry: Optional["TelemetrySubsystem"] = None) -> None:
@@ -77,6 +148,14 @@ class IPCManager:
         self._inboxes: Dict[int, deque] = {}
         # Maps region_id -> SharedMemoryRegion
         self.shared_regions: Dict[str, SharedMemoryRegion] = {}
+        # Maps channel_id -> PubSubChannel
+        self.pubsub_channels: Dict[str, PubSubChannel] = {}
+
+    def get_pubsub_channel(self, channel_id: str) -> PubSubChannel:
+        """Retrieve or create a PubSubChannel by channel_id."""
+        if channel_id not in self.pubsub_channels:
+            self.pubsub_channels[channel_id] = PubSubChannel(channel_id, self.security_manager, self.telemetry)
+        return self.pubsub_channels[channel_id]
 
     def send_message(self, sender_pid: int, receiver_pid: int, channel: str, payload: Any) -> bool:
         """Send message over channel to receiver_pid, gated by IPC_SEND capability."""
