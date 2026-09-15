@@ -1,0 +1,12 @@
+{
+  "name": "door-server",
+  "version": "1.0.0",
+  "description": "Minimal Node.js/Express HTTP server exposing /propose-change endpoint for local Git repo diff patches",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
