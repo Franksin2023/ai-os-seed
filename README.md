@@ -4,6 +4,14 @@ AI-OS-SEED is an open, evolutionary seed for an agent-friendly, capability-based
 
 ---
 
+## 📁 OS Project Structure
+
+The `OSPROJECTSTRUCTURE.md` file defines the canonical directory layout for the evolving OS.
+All agents use this structure to determine where new files should be placed and how the system
+should be organised. This prevents repo contamination and ensures consistent evolution.
+
+---
+
 ## 🚀 Key Features & Architecture
 
 AI-OS-SEED implements a capability-based microkernel design architecture in Python with clean abstractions for hardware isolation, security enforcement, and agent RPC integration:

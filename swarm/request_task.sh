@@ -30,7 +30,14 @@ if [ -f "$PROFILES_FILE" ]; then
     fi
 fi
 
-# 3. Construct prompt file
+# 3. Read OSPROJECTSTRUCTURE.md
+STRUCTURE_FILE="OSPROJECTSTRUCTURE.md"
+STRUCTURE_TEXT="No project structure specified."
+if [ -f "$STRUCTURE_FILE" ]; then
+    STRUCTURE_TEXT=$(cat "$STRUCTURE_FILE")
+fi
+
+# 4. Construct prompt file
 mkdir -p "$SWARM_DIR/prompts" "$SWARM_DIR/out"
 
 cat <<EOF > "$PROMPT_FILE"
@@ -40,6 +47,9 @@ Agent Identifier: $AGENT
 === AGENT PROFILE & CONSTRAINTS ===
 $PROFILE_TEXT
 
+=== OS PROJECT STRUCTURE & RULES ===
+$STRUCTURE_TEXT
+
 === REPOSITORY STATE ===
 Repo Status:
 $MODIFIED_FILES
@@ -48,7 +58,7 @@ Last Commit:
 $LAST_COMMIT
 
 Instructions:
-Analyze the current repository state, adhere strictly to your agent profile/constraints above, and return a valid JSON object compliant with TASK_SCHEMA.md:
+Analyze the current repository state, adhere strictly to your agent profile, constraints, and the OS project structure/directory rules above, and return a valid JSON object compliant with TASK_SCHEMA.md:
 {
   "description": "Short summary of the change or improvement",
   "intent": "Purpose of the change (e.g. fix, refactor, optimize, add-feature)",
