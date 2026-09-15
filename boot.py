@@ -1,6 +1,6 @@
 """
 AI-OS Boot Harness.
-Simulates Hardware Power-On Self-Test (POST) and initializes microkernel subsystems.
+Simulates Hardware Power-On Self-Test (POST) and initializes microkernel subsystems and Agent Orchestrator.
 """
 
 import sys
@@ -8,6 +8,7 @@ import time
 from ai_os.kernel.core import KernelCore
 from ai_os.kernel.types import Capability, CapabilityType, SyscallCode, SyscallRequest
 from ai_os.kernel.agent_api import AgentAPI
+from ai_os.agents.orchestrator import AgentOrchestrator
 
 
 def run_post_diagnostics(kernel: KernelCore) -> bool:
@@ -71,6 +72,22 @@ def main() -> int:
 
     print(f"[BOOT] Kernel booted successfully in {elapsed:.2f}ms")
     print(f"[BOOT] Status: {status}")
+
+    print("\n[BOOT] Booting Agent Orchestrator (Ecosystem Gateway)...")
+    orchestrator = AgentOrchestrator(kernel)
+
+    print("[POST] Onboarding Agent: Jules-Mutation-01...")
+    jules_agent = orchestrator.onboard_agent(
+        agent_id="jules-mut-01",
+        name="Jules-Mutation-01",
+        capabilities=[
+            Capability(CapabilityType.AGENT_MUTATION, "*"),
+            Capability(CapabilityType.AGENT_OBSERVATION, "*"),
+            Capability(CapabilityType.VFS_READ, "/var/log/*"),
+        ],
+        lineage_id="lineage-jules-002",
+    )
+    print(f"[POST] Agent Onboarded Successfully (PID {jules_agent.pid}, ID {jules_agent.agent_id})")
 
     # Spawn initial init process
     init_proc = kernel.create_process(

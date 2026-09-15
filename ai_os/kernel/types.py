@@ -29,6 +29,8 @@ class CapabilityType(Enum):
     IPC_RECEIVE = "ipc:receive"
     SYSCALL_EXEC = "syscall:exec"
     ADMIN = "admin:root"
+    AGENT_MUTATION = "agent:mutation"
+    AGENT_OBSERVATION = "agent:observation"
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,7 @@ from ai_os.emergent_memory import EmergentMemoryModel, MemoryTraits
 from ai_os.emergent_vfs import EmergentVFS, VFSTraits
 from ai_os.emergent_hal import EmergentHAL, HALTraits
 from ai_os.emergent_runtime import EmergentRuntime, RuntimeTraits
+from ai_os.agents.orchestrator import AgentOrchestrator, AgentTaskStatus
 
 
 @pytest.fixture
@@ -223,3 +224,25 @@ def test_task_executor():
     assert res["lineage_id"] == "kernel-lineage-063"
     assert res["task"] == "process_lifecycle"
     assert res["task_fitness"] > 0.5
+
+
+def test_agent_orchestrator(kernel):
+    orchestrator = AgentOrchestrator(kernel)
+    agent = orchestrator.onboard_agent(
+        agent_id="test-agent-01",
+        name="TestAgent",
+        capabilities=[Capability(CapabilityType.AGENT_MUTATION, "*")],
+    )
+    assert agent.agent_id == "test-agent-01"
+    assert agent.pid > 0
+
+    task = orchestrator.create_task("mutation", {"target": "scheduler"})
+    assert task.status == AgentTaskStatus.PENDING
+
+    ok = orchestrator.assign_task(task.task_id, "test-agent-01")
+    assert ok is True
+    assert task.status == AgentTaskStatus.ASSIGNED
+
+    done = orchestrator.complete_task(task.task_id, {"mutated": True})
+    assert done is True
+    assert task.status == AgentTaskStatus.COMPLETED
