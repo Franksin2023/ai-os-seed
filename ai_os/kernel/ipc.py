@@ -1,6 +1,6 @@
 """
 Capability-guarded Inter-Process Communication (IPC) for AI-OS.
-Supports message queues, shared memory regions, and pub-sub topic routing.
+Supports message queues, shared memory regions, pub-sub topic routing, and overflow protection.
 """
 
 import fnmatch
@@ -69,17 +69,24 @@ class PubSubChannel:
     Publish-subscribe IPC channel with topic pattern matching and capability controls.
     """
 
-    def __init__(self, channel_id: str, security_manager: SecurityManager, telemetry: Optional["TelemetrySubsystem"] = None) -> None:
+    def __init__(
+        self,
+        channel_id: str,
+        security_manager: SecurityManager,
+        telemetry: Optional["TelemetrySubsystem"] = None,
+        max_queue_size: int = 100,
+    ) -> None:
         self.channel_id = channel_id
         self.security_manager = security_manager
         self.telemetry = telemetry
+        self.max_queue_size = max_queue_size
         # Maps PID -> Set[topic_pattern]
         self.subscriptions: Dict[int, Set[str]] = {}
         # Maps PID -> deque of (topic, payload) messages
         self.inboxes: Dict[int, deque] = {}
 
     def subscribe(self, pid: int, topic_pattern: str) -> bool:
-        """Subscribe process PID to a topic pattern (e.g. 'kernel.*' or 'system/events')."""
+        """Subscribe process PID to a topic pattern."""
         if not self.security_manager.check_capability(pid, CapabilityType.IPC_RECEIVE, self.channel_id):
             return False
 
@@ -98,7 +105,7 @@ class PubSubChannel:
         return False
 
     def publish(self, publisher_pid: int, topic: str, payload: Any) -> int:
-        """Publish payload on topic to matching subscriber inboxes."""
+        """Publish payload on topic to matching subscriber inboxes with overflow protection."""
         if not self.security_manager.check_capability(publisher_pid, CapabilityType.IPC_SEND, self.channel_id):
             return 0
 
@@ -109,7 +116,17 @@ class PubSubChannel:
 
             for pat in patterns:
                 if fnmatch.fnmatch(topic, pat):
-                    self.inboxes[pid].append((topic, payload))
+                    inbox = self.inboxes[pid]
+                    if len(inbox) >= self.max_queue_size:
+                        inbox.popleft()  # Drop oldest
+                        if self.telemetry:
+                            self.telemetry.log_event(
+                                "IPC_OVERFLOW",
+                                pid=pid,
+                                details={"channel_id": self.channel_id, "policy": "drop_oldest"},
+                            )
+
+                    inbox.append((topic, payload))
                     subscribers_notified += 1
                     break
 
@@ -136,12 +153,18 @@ class PubSubChannel:
 
 class IPCManager:
     """
-    Manages named capability-restricted IPC channels, message queues, shared memory regions, and pub-sub channels.
+    Manages named capability-restricted IPC channels, message queues, shared memory regions, and pub-sub channels with overflow protection.
     """
 
-    def __init__(self, security_manager: SecurityManager, telemetry: Optional["TelemetrySubsystem"] = None) -> None:
+    def __init__(
+        self,
+        security_manager: SecurityManager,
+        telemetry: Optional["TelemetrySubsystem"] = None,
+        max_queue_size: int = 100,
+    ) -> None:
         self.security_manager = security_manager
         self.telemetry = telemetry
+        self.max_queue_size = max_queue_size
         # Maps channel_name -> deque of IPCMessage
         self._channels: Dict[str, deque] = {}
         # Maps PID -> deque of IPCMessage directed to specific process
@@ -154,11 +177,13 @@ class IPCManager:
     def get_pubsub_channel(self, channel_id: str) -> PubSubChannel:
         """Retrieve or create a PubSubChannel by channel_id."""
         if channel_id not in self.pubsub_channels:
-            self.pubsub_channels[channel_id] = PubSubChannel(channel_id, self.security_manager, self.telemetry)
+            self.pubsub_channels[channel_id] = PubSubChannel(
+                channel_id, self.security_manager, self.telemetry, self.max_queue_size
+            )
         return self.pubsub_channels[channel_id]
 
     def send_message(self, sender_pid: int, receiver_pid: int, channel: str, payload: Any) -> bool:
-        """Send message over channel to receiver_pid, gated by IPC_SEND capability."""
+        """Send message over channel to receiver_pid, gated by IPC_SEND capability and overflow policy."""
         if not self.security_manager.check_capability(sender_pid, CapabilityType.IPC_SEND, channel):
             return False
 
@@ -171,12 +196,33 @@ class IPCManager:
 
         if channel not in self._channels:
             self._channels[channel] = deque()
-        self._channels[channel].append(msg)
+
+        channel_queue = self._channels[channel]
+        if len(channel_queue) >= self.max_queue_size:
+            channel_queue.popleft()  # Drop oldest
+            if self.telemetry:
+                self.telemetry.log_event(
+                    "IPC_OVERFLOW",
+                    pid=sender_pid,
+                    details={"channel": channel, "policy": "drop_oldest"},
+                )
+
+        channel_queue.append(msg)
 
         if receiver_pid not in self._inboxes:
             self._inboxes[receiver_pid] = deque()
-        self._inboxes[receiver_pid].append(msg)
 
+        inbox = self._inboxes[receiver_pid]
+        if len(inbox) >= self.max_queue_size:
+            inbox.popleft()  # Drop oldest
+            if self.telemetry:
+                self.telemetry.log_event(
+                    "IPC_OVERFLOW",
+                    pid=receiver_pid,
+                    details={"inbox_pid": receiver_pid, "policy": "drop_oldest"},
+                )
+
+        inbox.append(msg)
         return True
 
     def receive_message(self, receiver_pid: int, channel: str) -> Optional[IPCMessage]:

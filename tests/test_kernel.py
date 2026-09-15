@@ -204,6 +204,31 @@ def test_ipc_pubsub_channel(kernel):
     assert len(pub_events) == 2
 
 
+def test_ipc_queue_overflow_protection(kernel):
+    kernel.ipc.max_queue_size = 5
+    cap_send = Capability(CapabilityType.IPC_SEND, "chan_overflow")
+    cap_recv = Capability(CapabilityType.IPC_RECEIVE, "chan_overflow")
+
+    p1 = kernel.create_process(name="sender", capabilities=[cap_send])
+    p2 = kernel.create_process(name="receiver", capabilities=[cap_recv])
+
+    # Send 7 messages to a queue with max 5
+    for i in range(7):
+        assert kernel.ipc.send_message(p1.pid, p2.pid, "chan_overflow", f"msg_{i}") is True
+
+    # Inbox size should be capped at 5
+    inbox = kernel.ipc._inboxes[p2.pid]
+    assert len(inbox) == 5
+
+    # Oldest messages (msg_0, msg_1) were dropped; first remaining is msg_2
+    msg_first = kernel.ipc.receive_message(p2.pid, "chan_overflow")
+    assert msg_first.payload == "msg_2"
+
+    # Telemetry verification
+    overflow_events = kernel.telemetry.get_events(event_type="IPC_OVERFLOW")
+    assert len(overflow_events) >= 2
+
+
 def test_syscall_dispatcher(kernel):
     caps = [Capability(CapabilityType.VFS_WRITE, "/logs/*")]
     p = kernel.create_process(name="logger", capabilities=caps)
